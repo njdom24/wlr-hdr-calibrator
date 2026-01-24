@@ -1,18 +1,10 @@
-# wl-gammactl
-![wl-gammactl](img/wl-gammactl.png)
+# wlr-hdr-calibrator
 
+Forked from https://github.com/mischw/wl-gammactl
 
-Small GTK GUI application to set contrast, brightness and gamma for wayland compositors which support the wlr-gamma-control protocol extension.
-Basically this is the example from here: https://github.com/swaywm/wlroots/blob/master/examples/gamma-control.c
-with a nice little GTK GUI slapped on to it. You can set contrast, brightness and gamma using sliders and reset back to default values.
+Made originally to get some analog to KDE Plasma 6's HDR calibration GUI, and to deal with `amdgpu`'s poor PQ EOTF behavior over HDMI, making HDR output overbrightened and generally follow a wonky EOTF curve (at least on my TVs: *TCL QM851G, TCL 55R635*).
 
-
-This was made to make the process of calibrating your monitor a bit easier, since wayland support for color profiles is not yet implemented.
-When you are satisfied with your settings, copy the given command line and execute it at startup to make the settings load at apply on every boot.
-
-
-Keep in mind that it uses the same protocol extension like the redshift fork https://aur.archlinux.org/packages/redshift-wlr-gamma-control/  
-When running wl-gammactl it will kick out any running redshift instance and fail to start up. On second run it should work as expected.
+When running `wlr-hdr-calibrator` it will kick out any running redshift instance and fail to start up. On second run it should work as expected.
 So unfortunatly only one can run at a time (?) for now.
 
 # Build
@@ -24,15 +16,20 @@ $ ninja -C build
 ```
 
 # Run
-Call without any arguments to run the GUI
+To create a "LUT", run the GUI
 ```console
-$ wl-gammactl
+$ cd gui
+$ nix-shell
+$ python3 lut_editor.py
 ```
 
-Call with arguments to set values without GUI, eg:
+It will save your LUT as a plaintext file.
+
+Call with a path to the LUT to set values, eg:
 ```console
-$ wl-gammactl -c 0.996 -b 1 -g 1.05
+$ cd build
+$ wlr-hdr-calibrator ../gui/lut
 ```
-Useful for calling on startup
+Useful for calling on startup or in scripts (i.e. HDR toggle)
 
 
