@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 import sys
+import bisect
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QFileDialog,
-    QLabel, QSpinBox
+    QLabel, QSpinBox, QCheckBox
 )
 from PyQt6.QtGui import QPainter, QPen, QColor, QFont
 from PyQt6.QtCore import Qt, QRectF, QPointF
@@ -19,6 +20,7 @@ class LUTEditor(QWidget):
 
         # Config
         self.max_nits = 1000
+        self.inverse_enabled = True
 
         # UI
         self.init_ui()
@@ -66,6 +68,11 @@ class LUTEditor(QWidget):
         bottom_layout.addWidget(self.reset_btn)
         bottom_layout.addStretch()
 
+        self.inverse_checkbox = QCheckBox("Inverse correction")
+        self.inverse_checkbox.setChecked(True)
+        self.inverse_checkbox.stateChanged.connect(self.on_inverse_toggled)
+        bottom_layout.addWidget(self.inverse_checkbox)
+
         # Info label
         self.info_label = QLabel("Point: ")
         main_layout.addWidget(self.info_label)
@@ -73,6 +80,9 @@ class LUTEditor(QWidget):
     def update_max_nits(self, value):
         self.max_nits = value
         self.update()
+
+    def on_inverse_toggled(self, state):
+        self.inverse_enabled = (state == Qt.CheckState.Checked)
 
     def add_point(self):
         if len(self.points) < 20:
@@ -97,8 +107,18 @@ class LUTEditor(QWidget):
         path, _ = QFileDialog.getSaveFileName(self, "Save LUT", "lut", "All files (*.*)")
         if path:
             with open(path, "w") as f:
-                for x, y in self.points:
-                    f.write(f"{x} {y}\n")
+                if self.inverse_enabled:
+                    f.write("0 0\n")
+                    for intended, measured in self.points[1:]:
+                        scale = measured / intended
+                        corrected = intended / scale
+                        f.write(f"{intended} {corrected}\n")
+                else:
+                    for x, y in self.points:
+                        f.write(f"{x} {y}\n")
+                
+                if self.points[-1][0] < 10000:
+                    f.write("10000 10000\n")
 
     def paintEvent(self, event):
         painter = QPainter(self.canvas)
