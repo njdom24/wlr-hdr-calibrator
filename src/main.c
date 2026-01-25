@@ -35,23 +35,62 @@ static struct wl_list outputs;
 static struct lut_point lut[MAX_LUT_POINTS];
 static size_t lut_size = 0;
 
-// Interpolate LUT for a normalized 0-1 position
-static double interpolate_lut(double pos) {
-    if (lut_size == 0) return pos; // fallback
-    double x = pos * HDR_MAX_NITS;
-    // clamp outside bounds
-    if (x <= lut[0].input) return lut[0].output / HDR_MAX_NITS;
-    if (x >= lut[lut_size-1].input) return lut[lut_size-1].output / HDR_MAX_NITS;
+// ST2084 constants
+static const double PQ_M1 = 2610.0 / 16384.0;
+static const double PQ_M2 = 2523.0 / 32.0;
+static const double PQ_C1 = 3424.0 / 4096.0;
+static const double PQ_C2 = 2413.0 / 128.0;
+static const double PQ_C3 = 2392.0 / 128.0;
 
-    // find interval
+static double pq_decode(double pq) {
+    // PQ signal [0..1] -> linear nits normalized to 10000
+    double x = pow(pq, 1.0 / PQ_M2);
+    double num = fmax(x - PQ_C1, 0.0);
+    double den = PQ_C2 - PQ_C3 * x;
+    double l = pow(num / den, 1.0 / PQ_M1);
+    return l; // 0..1 relative to 10000 nits
+}
+
+static double pq_encode(double l) {
+    // linear nits normalized to 10000 -> PQ signal [0..1]
+    l = fmax(l, 0.0);
+    double x = pow(l, PQ_M1);
+    double num = PQ_C1 + PQ_C2 * x;
+    double den = 1.0 + PQ_C3 * x;
+    return pow(num / den, PQ_M2);
+}
+
+// Interpolate LUT for a normalized 0-1 position
+static double interpolate_lut(double pq_in) {
+    if (lut_size == 0)
+        return pq_in;
+
+    // Convert PQ signal -> linear nits (0..1 relative to 10k)
+    double lin_in = pq_decode(pq_in) * HDR_MAX_NITS;
+
+    // Clamp to LUT domain
+    if (lin_in <= lut[0].input)
+        return pq_encode(lut[0].output / HDR_MAX_NITS);
+
+    if (lin_in >= lut[lut_size-1].input)
+        return pq_encode(lut[lut_size-1].output / HDR_MAX_NITS);
+
+    // Find interval in nits
     for (size_t i = 0; i < lut_size - 1; i++) {
-        if (x >= lut[i].input && x <= lut[i+1].input) {
-            double t = (x - lut[i].input) / (lut[i+1].input - lut[i].input);
-            double val = lut[i].output + t * (lut[i+1].output - lut[i].output);
-            return val / HDR_MAX_NITS;
+        if (lin_in >= lut[i].input && lin_in <= lut[i+1].input) {
+            double t = (lin_in - lut[i].input) /
+                       (lut[i+1].input - lut[i].input);
+
+            double lin_out =
+                lut[i].output +
+                t * (lut[i+1].output - lut[i].output);
+
+            // Convert corrected linear nits -> PQ signal
+            return pq_encode(lin_out / HDR_MAX_NITS);
         }
     }
-    return pos; // fallback
+
+    return pq_in;
 }
 
 static int create_anonymous_file(off_t size) {
@@ -81,13 +120,13 @@ static void fill_gamma_table(uint16_t *table, uint32_t ramp_size) {
     uint16_t *b = table + 2*ramp_size;
 
     for (uint32_t i = 0; i < ramp_size; i++) {
-        double pos = (double)i / (ramp_size - 1);
-        double val = interpolate_lut(pos);
+        double pq_in = (double)i / (ramp_size - 1);
+        double pq_out = interpolate_lut(pq_in);
 
-        if (val > 1.0) val = 1.0;
-        if (val < 0.0) val = 0.0;
+        pq_out = fmin(fmax(pq_out, 0.0), 1.0);
 
-        r[i] = g[i] = b[i] = (uint16_t)(UINT16_MAX * val);
+        uint16_t v = (uint16_t)(UINT16_MAX * pq_out);
+        r[i] = g[i] = b[i] = v;
     }
 }
 
