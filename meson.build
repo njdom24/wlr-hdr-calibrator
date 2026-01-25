@@ -3,7 +3,6 @@ project(
 	'c'
 )
 
-
 # Define dependecies
 dep_gtk3 = dependency('gtk+-3.0')
 dep_wayland_client = dependency('wayland-client')
@@ -25,7 +24,6 @@ run_command(
 	'--generate-source',
 	gres_xml
 )
-
 
 # Get protocol extensions
 git = find_program('git')
@@ -66,7 +64,6 @@ sources = [
 	'src/main.c',
 	'src/wlr-gamma-control-unstable-v1-client-protocol.c',
 	'src/wlr-gamma-control-unstable-v1-client-protocol.h',
-	'src/resources.c'
 ]
 
 
