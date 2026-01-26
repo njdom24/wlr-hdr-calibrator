@@ -1,0 +1,44 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1769170682,
+        "narHash": "sha256-oMmN1lVQU0F0W2k6OI3bgdzp2YOHWYUAw79qzDSjenU=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "wlr-protocols": "wlr-protocols"
+      }
+    },
+    "wlr-protocols": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1635761232,
+        "narHash": "sha256-XdMNURKA/9yd3rPY3L8By+uxKqDZptNi28FoOFHL3dY=",
+        "owner": "swaywm",
+        "repo": "wlr-protocols",
+        "rev": "b010a03648b88d143236de193bddbfea0c08bc84",
+        "type": "github"
+      },
+      "original": {
+        "owner": "swaywm",
+        "repo": "wlr-protocols",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

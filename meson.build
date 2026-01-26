@@ -1,5 +1,5 @@
 project(
-	'wl-gammactl',
+	'wlr-hdr-calibrator',
 	'c'
 )
 
@@ -68,7 +68,7 @@ sources = [
 
 
 executable(
-	'wl-gammactl',
+	'wlr-hdr-calibrator',
 	sources,
 	dependencies : [
 		dep_wayland_client,
