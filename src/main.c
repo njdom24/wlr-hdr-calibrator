@@ -283,13 +283,34 @@ static int load_lut_file(const char *filename) {
     return 0;
 }
 
+static void usage(const char *prog) {
+    fprintf(stderr,
+        "Usage:\n"
+        "  %s <lut.txt>                        apply plain-text PQ LUT\n"
+        "  %s --cube <profile.cube>            apply .cube LUT (neutral axis)\n",
+        prog, prog, prog, prog);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) {
-        fprintf(stderr, "usage: %s <lut.txt>\n",argv[0]);
-        return 1;
+        usage(argv[0]); return 1;
     }
 
-    if (load_lut_file(argv[1]) != 0) return 1;
+    const char *cube_path = NULL;
+    const char *lut_path = NULL;
+
+    if (strcmp(argv[1], "--cube") == 0) {
+        if (argc < 3) { usage(argv[0]); return 1; }
+        cube_path = argv[2];
+    } else {
+        lut_path = argv[1];
+    }
+
+    if (cube_path) {
+        if (load_cube_file(cube_path) != 0) return 1;
+    } else {
+        if (load_lut_file(lut_path) != 0) return 1;
+    }
 
     wl_list_init(&outputs);
     display = wl_display_connect(NULL);
