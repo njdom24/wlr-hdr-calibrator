@@ -203,16 +203,21 @@ static int load_cube_file(const char *filename) {
 static void fill_gamma_table(uint16_t *table, uint32_t ramp_size) {
     uint16_t *r = table;
     uint16_t *g = table + ramp_size;
-    uint16_t *b = table + 2*ramp_size;
+    uint16_t *b = table + 2 * ramp_size;
 
     for (uint32_t i = 0; i < ramp_size; i++) {
-        double pq_in = (double)i / (ramp_size - 1);
-        double pq_out = interpolate_lut(pq_in);
-
-        pq_out = fmin(fmax(pq_out, 0.0), 1.0);
-
-        uint16_t v = (uint16_t)(UINT16_MAX * pq_out);
-        r[i] = g[i] = b[i] = v;
+        double in = (double)i / (ramp_size - 1);
+        double rv, gv, bv;
+        if (cube_loaded) {
+            rv = interp_channel(&cube_r, in);
+            gv = interp_channel(&cube_g, in);
+            bv = interp_channel(&cube_b, in);
+        } else {
+            rv = gv = bv = interpolate_lut(in);
+        }
+        r[i] = (uint16_t)(UINT16_MAX * fmin(fmax(rv, 0.0), 1.0));
+        g[i] = (uint16_t)(UINT16_MAX * fmin(fmax(gv, 0.0), 1.0));
+        b[i] = (uint16_t)(UINT16_MAX * fmin(fmax(bv, 0.0), 1.0));
     }
 }
 
