@@ -14,6 +14,17 @@
 #define HDR_MAX_NITS 10000.0
 #define MAX_LUT_POINTS 1024
 
+// .cube per-channel 1D data (sampled from neutral axis of a 3D cube)
+#define MAX_CUBE_SIZE 65  // Max LUT_3D_SIZE found in testing
+struct cube_channel {
+    double in[MAX_CUBE_SIZE];   // Input value  [0..1]
+    double out[MAX_CUBE_SIZE];  // Output value [0..1]
+    int    size;
+};
+static struct cube_channel cube_r, cube_g, cube_b;
+static int cube_loaded = 0;
+
+
 struct lut_point {
     double input;
     double output;
@@ -114,19 +125,99 @@ static int create_gamma_table(uint32_t ramp_size, uint16_t **table) {
     return fd;
 }
 
+/*
+ Reads a .cube file and samples each channel
+ (R=G=B input) to produce three independent 1D curves.
+*/
+
+static double interp_channel(const struct cube_channel *ch, double x) {
+    if (x <= ch->in[0])          return ch->out[0];
+    if (x >= ch->in[ch->size-1]) return ch->out[ch->size-1];
+    for (int i = 0; i < ch->size - 1; i++) {
+        if (x >= ch->in[i] && x <= ch->in[i+1]) {
+            double t = (x - ch->in[i]) / (ch->in[i+1] - ch->in[i]);
+            return ch->out[i] + t * (ch->out[i+1] - ch->out[i]);
+        }
+    }
+    return x;
+}
+
+static int load_cube_file(const char *filename) {
+    FILE *f = fopen(filename, "r");
+    if (!f) { perror("fopen"); return -1; }
+
+    int size = 0;
+    char line[256];
+
+    // Header
+    while (fgets(line, sizeof(line), f)) {
+        if (strncmp(line, "LUT_3D_SIZE", 11) == 0) {
+            sscanf(line + 11, "%d", &size);
+            break;
+        }
+    }
+    if (size < 2 || size > MAX_CUBE_SIZE) {
+        fprintf(stderr, "cube: unsupported LUT_3D_SIZE %d (max %d)\n",
+                size, MAX_CUBE_SIZE);
+        fclose(f); return -1;
+    }
+
+    int total = size * size * size;
+    double (*cube)[3] = malloc((size_t)total * sizeof(*cube));
+    if (!cube) { perror("malloc"); fclose(f); return -1; }
+
+    int idx = 0;
+    while (fgets(line, sizeof(line), f) && idx < total) {
+        double rv, gv, bv;
+        if (sscanf(line, "%lf %lf %lf", &rv, &gv, &bv) == 3) {
+            cube[idx][0] = rv;
+            cube[idx][1] = gv;
+            cube[idx][2] = bv;
+            idx++;
+        }
+    }
+    fclose(f);
+
+    if (idx != total) {
+        fprintf(stderr, "cube: expected %d entries, got %d\n", total, idx);
+        free(cube); return -1;
+    }
+
+    cube_r.size = cube_g.size = cube_b.size = size;
+    for (int i = 0; i < size; i++) {
+        double in_val = (double)i / (size - 1);
+        int entry = i * size * size + i * size + i;
+        cube_r.in[i]  = cube_g.in[i]  = cube_b.in[i]  = in_val;
+        cube_r.out[i] = cube[entry][0];
+        cube_g.out[i] = cube[entry][1];
+        cube_b.out[i] = cube[entry][2];
+    }
+
+    free(cube);
+    cube_loaded = 1;
+    fprintf(stderr, "loaded .cube: %dx%dx%d\n",
+            size, size, size);
+    return 0;
+}
+
 static void fill_gamma_table(uint16_t *table, uint32_t ramp_size) {
     uint16_t *r = table;
     uint16_t *g = table + ramp_size;
-    uint16_t *b = table + 2*ramp_size;
+    uint16_t *b = table + 2 * ramp_size;
 
     for (uint32_t i = 0; i < ramp_size; i++) {
-        double pq_in = (double)i / (ramp_size - 1);
-        double pq_out = interpolate_lut(pq_in);
-
-        pq_out = fmin(fmax(pq_out, 0.0), 1.0);
-
-        uint16_t v = (uint16_t)(UINT16_MAX * pq_out);
-        r[i] = g[i] = b[i] = v;
+        double in = (double)i / (ramp_size - 1);
+        double rv, gv, bv;
+        if (cube_loaded) {
+            rv = interp_channel(&cube_r, in);
+            gv = interp_channel(&cube_g, in);
+            bv = interp_channel(&cube_b, in);
+        } else {
+            rv = gv = bv = interpolate_lut(in);
+        }
+        r[i] = (uint16_t)(UINT16_MAX * fmin(fmax(rv, 0.0), 1.0));
+        g[i] = (uint16_t)(UINT16_MAX * fmin(fmax(gv, 0.0), 1.0));
+        b[i] = (uint16_t)(UINT16_MAX * fmin(fmax(bv, 0.0), 1.0));
     }
 }
 
@@ -192,13 +283,34 @@ static int load_lut_file(const char *filename) {
     return 0;
 }
 
+static void usage(const char *prog) {
+    fprintf(stderr,
+        "Usage:\n"
+        "  %s <lut.txt>                        apply plain-text PQ LUT\n"
+        "  %s --cube <profile.cube>            apply .cube LUT (neutral axis)\n",
+        prog, prog, prog, prog);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) {
-        fprintf(stderr, "usage: %s <lut.txt>\n",argv[0]);
-        return 1;
+        usage(argv[0]); return 1;
     }
 
-    if (load_lut_file(argv[1]) != 0) return 1;
+    const char *cube_path = NULL;
+    const char *lut_path = NULL;
+
+    if (strcmp(argv[1], "--cube") == 0) {
+        if (argc < 3) { usage(argv[0]); return 1; }
+        cube_path = argv[2];
+    } else {
+        lut_path = argv[1];
+    }
+
+    if (cube_path) {
+        if (load_cube_file(cube_path) != 0) return 1;
+    } else {
+        if (load_lut_file(lut_path) != 0) return 1;
+    }
 
     wl_list_init(&outputs);
     display = wl_display_connect(NULL);
